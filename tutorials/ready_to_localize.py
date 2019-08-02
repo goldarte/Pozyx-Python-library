@@ -12,9 +12,15 @@ from time import sleep
 
 from pypozyx import (POZYX_POS_ALG_UWB_ONLY, POZYX_3D, Coordinates, POZYX_SUCCESS, PozyxConstants, version,
                      DeviceCoordinates, PozyxSerial, get_first_pozyx_serial_port, SingleRegister, DeviceList, PozyxRegisters)
-from pythonosc.udp_client import SimpleUDPClient
+#from pythonosc.udp_client import SimpleUDPClient
+
+import csv
+
+from datetime import datetime
 
 from pypozyx.tools.version_check import perform_latest_version_check
+
+from pypozyx.structures.device_information import DeviceDetails
 
 
 class ReadyToLocalize(object):
@@ -49,6 +55,14 @@ class ReadyToLocalize(object):
 
         self.setAnchorsManual(save_to_flash=False)
         self.printPublishConfigurationResult()
+        system_details = DeviceDetails()
+        status = pozyx.getDeviceDetails(system_details, remote_id=self.remote_id)
+        dev_id = "{}".format("0x%0.4x" % system_details.id)
+
+        filename = 'pozyx-data-' + dev_id + '-' + datetime.now().strftime('%Y%m%d-%H%M%S') + '.csv'
+        self.csv_file = open(filename, mode='w+')
+        self.csv_writer = csv.writer(self.csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        self.csv_writer.writerow(['x', 'y', 'z'])
 
     def loop(self):
         """Performs positioning and displays/exports the results."""
@@ -67,6 +81,7 @@ class ReadyToLocalize(object):
             network_id = 0
         print("POS ID {}, x(mm): {pos.x} y(mm): {pos.y} z(mm): {pos.z}".format(
             "0x%0.4x" % network_id, pos=position))
+        self.csv_writer.writerow([position.x, position.y, position.z])
         if self.osc_udp_client is not None:
             self.osc_udp_client.send_message(
                 "/position", [network_id, int(position.x), int(position.y), int(position.z)])
@@ -142,41 +157,45 @@ class ReadyToLocalize(object):
                 self.osc_udp_client.send_message(
                     "/anchor", [anchor.network_id, int(anchor.coordinates.x), int(anchor.coordinates.y), int(anchor.coordinates.z)])
                 sleep(0.025)
+    def close(self):
+        self.csv_file.close()
 
 
 if __name__ == "__main__":
     # Check for the latest PyPozyx version. Skip if this takes too long or is not needed by setting to False.
     check_pypozyx_version = True
+    # Enable to send position data through OSC
+    use_processing = False
+    # Configure if you want to route OSC to outside your localhost. Networking knowledge is required.
+    ip = "127.0.0.1"
+    network_port = 8888
+    # Necessary anchor data for calibration, change the IDs and coordinates yourself according to your measurement
+    anchors = [DeviceCoordinates(0x6a11, 1, Coordinates(-155, 12210, 1500)),
+               DeviceCoordinates(0x6a19, 1, Coordinates(5170, 11572, 2900)),
+               DeviceCoordinates(0x6a6b, 1, Coordinates(0, 0, 2900)),
+               DeviceCoordinates(0x676d, 1, Coordinates(4330, 0, 2900))]
+    # Set if you use remote anchor
+    remote_id = 0x6e66               # remote device network ID
+    remote = False                   # whether to use a remote device
+    # Set serial port or leave it empty to make auto connect
+    serial_port = '/dev/ttyACM1'
     if check_pypozyx_version:
         perform_latest_version_check()
 
     # shortcut to not have to find out the port yourself
-    serial_port = get_first_pozyx_serial_port()
-    if serial_port is None:
-        print("No Pozyx connected. Check your USB cable or your driver!")
-        quit()
+    if serial_port == '':
+        serial_port = get_first_pozyx_serial_port()
+        print(serial_port)
+        if serial_port is None:
+            print("No Pozyx connected. Check your USB cable or your driver!")
+            quit()
 
-    remote_id = 0x6e66                 # remote device network ID
-    remote = False                   # whether to use a remote device
     if not remote:
         remote_id = None
-
-    # enable to send position data through OSC
-    use_processing = True
-
-    # configure if you want to route OSC to outside your localhost. Networking knowledge is required.
-    ip = "127.0.0.1"
-    network_port = 8888
 
     osc_udp_client = None
     if use_processing:
         osc_udp_client = SimpleUDPClient(ip, network_port)
-
-    # necessary data for calibration, change the IDs and coordinates yourself according to your measurement
-    anchors = [DeviceCoordinates(0xA001, 1, Coordinates(0, 0, 2790)),
-               DeviceCoordinates(0xA002, 1, Coordinates(10490, 0, 2790)),
-               DeviceCoordinates(0xA003, 1, Coordinates(-405, 6000, 2790)),
-               DeviceCoordinates(0xA004, 1, Coordinates(10490, 6500, 2790))]
 
     # positioning algorithm to use, other is PozyxConstants.POSITIONING_ALGORITHM_TRACKING
     algorithm = PozyxConstants.POSITIONING_ALGORITHM_UWB_ONLY
@@ -190,3 +209,4 @@ if __name__ == "__main__":
     r.setup()
     while True:
         r.loop()
+    r.close()
