@@ -22,6 +22,8 @@ from pypozyx.tools.version_check import perform_latest_version_check
 
 from pypozyx.structures.device_information import DeviceDetails
 
+import argparse
+
 
 class ReadyToLocalize(object):
     """Continuously calls the Pozyx positioning function and prints its position."""
@@ -162,6 +164,11 @@ class ReadyToLocalize(object):
 
 
 if __name__ == "__main__":
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-p", "--port", type=str,
+                        help="sets the uart port of pozyx, use first pozyx device if empty")
+    args = parser.parse_args()
     # Check for the latest PyPozyx version. Skip if this takes too long or is not needed by setting to False.
     check_pypozyx_version = True
     # Enable to send position data through OSC
@@ -178,7 +185,10 @@ if __name__ == "__main__":
     remote_id = 0x6e66               # remote device network ID
     remote = False                   # whether to use a remote device
     # Set serial port or leave it empty to make auto connect
-    serial_port = '/dev/ttyACM1'
+    serial_port = ''
+    if args.port:
+        serial_port = args.port
+
     if check_pypozyx_version:
         perform_latest_version_check()
 
@@ -203,10 +213,16 @@ if __name__ == "__main__":
     dimension = PozyxConstants.DIMENSION_3D
     # height of device, required in 2.5D positioning
     height = 1000
-
-    pozyx = PozyxSerial(serial_port)
+    try:
+        pozyx = PozyxSerial(serial_port)
+    except:
+        print("Can't connect to serial port. Quit...")
+        quit()
     r = ReadyToLocalize(pozyx, osc_udp_client, anchors, algorithm, dimension, height, remote_id)
     r.setup()
     while True:
-        r.loop()
-    r.close()
+        try:
+            r.loop()
+        except KeyboardInterrupt:
+            r.close()
+            quit()
