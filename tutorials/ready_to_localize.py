@@ -24,6 +24,28 @@ from pypozyx.structures.device_information import DeviceDetails
 
 import argparse
 
+# Global settings
+
+# Check for the latest PyPozyx version. Skip if this takes too long or is not needed by setting to False.
+check_pypozyx_version = True
+# Set if you want to save positioning data to csv file to analyze it later
+save_to_csv = True
+# Enable to send position data through OSC
+use_processing = False
+# Configure if you want to route OSC to outside your localhost. Networking knowledge is required.
+ip = "127.0.0.1"
+network_port = 8888
+# Necessary anchor data for calibration, change the IDs and coordinates yourself according to your measurement
+anchors = [DeviceCoordinates(0x6a11, 1, Coordinates(-155, 12210, 1500)),
+            DeviceCoordinates(0x6a19, 1, Coordinates(5170, 11572, 2900)),
+            DeviceCoordinates(0x6a6b, 1, Coordinates(0, 0, 2900)),
+            DeviceCoordinates(0x676d, 1, Coordinates(4330, 0, 2900))]
+# Set if you use remote anchor
+remote_id = 0x6e66               # remote device network ID
+remote = False                   # whether to use a remote device
+# Set serial port or leave it empty to make auto connect
+serial_port = ''
+
 
 class ReadyToLocalize(object):
     """Continuously calls the Pozyx positioning function and prints its position."""
@@ -61,10 +83,11 @@ class ReadyToLocalize(object):
         status = pozyx.getDeviceDetails(system_details, remote_id=self.remote_id)
         dev_id = "{}".format("0x%0.4x" % system_details.id)
 
-        filename = 'pozyx-data-' + dev_id + '-' + datetime.now().strftime('%Y%m%d-%H%M%S') + '.csv'
-        self.csv_file = open(filename, mode='w+')
-        self.csv_writer = csv.writer(self.csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-        self.csv_writer.writerow(['x', 'y', 'z'])
+        if save_to_csv:
+            filename = 'pozyx-data-' + dev_id + '-' + datetime.now().strftime('%Y%m%d-%H%M%S') + '.csv'
+            self.csv_file = open(filename, mode='w+')
+            self.csv_writer = csv.writer(self.csv_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            self.csv_writer.writerow(['x', 'y', 'z'])
 
     def loop(self):
         """Performs positioning and displays/exports the results."""
@@ -83,7 +106,8 @@ class ReadyToLocalize(object):
             network_id = 0
         print("POS ID {}, x(mm): {pos.x} y(mm): {pos.y} z(mm): {pos.z}".format(
             "0x%0.4x" % network_id, pos=position))
-        self.csv_writer.writerow([position.x, position.y, position.z])
+        if save_to_csv:
+            self.csv_writer.writerow([position.x, position.y, position.z])
         if self.osc_udp_client is not None:
             self.osc_udp_client.send_message(
                 "/position", [network_id, int(position.x), int(position.y), int(position.z)])
@@ -160,7 +184,8 @@ class ReadyToLocalize(object):
                     "/anchor", [anchor.network_id, int(anchor.coordinates.x), int(anchor.coordinates.y), int(anchor.coordinates.z)])
                 sleep(0.025)
     def close(self):
-        self.csv_file.close()
+        if save_to_csv:
+            self.csv_file.close()
 
 
 if __name__ == "__main__":
@@ -169,23 +194,7 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--port", type=str,
                         help="sets the uart port of pozyx, use first pozyx device if empty")
     args = parser.parse_args()
-    # Check for the latest PyPozyx version. Skip if this takes too long or is not needed by setting to False.
-    check_pypozyx_version = True
-    # Enable to send position data through OSC
-    use_processing = False
-    # Configure if you want to route OSC to outside your localhost. Networking knowledge is required.
-    ip = "127.0.0.1"
-    network_port = 8888
-    # Necessary anchor data for calibration, change the IDs and coordinates yourself according to your measurement
-    anchors = [DeviceCoordinates(0x6a11, 1, Coordinates(-155, 12210, 1500)),
-               DeviceCoordinates(0x6a19, 1, Coordinates(5170, 11572, 2900)),
-               DeviceCoordinates(0x6a6b, 1, Coordinates(0, 0, 2900)),
-               DeviceCoordinates(0x676d, 1, Coordinates(4330, 0, 2900))]
-    # Set if you use remote anchor
-    remote_id = 0x6e66               # remote device network ID
-    remote = False                   # whether to use a remote device
-    # Set serial port or leave it empty to make auto connect
-    serial_port = ''
+
     if args.port:
         serial_port = args.port
 
@@ -213,11 +222,14 @@ if __name__ == "__main__":
     dimension = PozyxConstants.DIMENSION_3D
     # height of device, required in 2.5D positioning
     height = 1000
+
+    # connect to pozyx device
     try:
         pozyx = PozyxSerial(serial_port)
     except:
         print("Can't connect to serial port. Quit...")
         quit()
+
     r = ReadyToLocalize(pozyx, osc_udp_client, anchors, algorithm, dimension, height, remote_id)
     r.setup()
     while True:
