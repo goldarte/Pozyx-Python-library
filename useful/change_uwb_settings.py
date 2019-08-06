@@ -66,11 +66,11 @@ if __name__ == '__main__':
     #                            gain_db=11.5)
 
     # new uwb_settings
-    uwb_settings = UWBSettings(channel=5,
-                               bitrate=0,
+    uwb_settings = UWBSettings(channel=2,
+                               bitrate=2,
                                prf=2,
-                               plen=0x08,
-                               gain_db=11.5)
+                               plen=0x04,
+                               gain_db=20.0)
 
     # set to True if local tag needs to change settings as well.
     set_local = True
@@ -80,7 +80,7 @@ if __name__ == '__main__':
 
     # list of IDs to set UWB settings for. example devices = [0x6001, 0x6002,
     # 0x6799]
-    devices = []
+    devices = [0x6a11,0x6a19,0x6a6b,0x676d]
 
     # serial port
     serial_port = get_first_pozyx_serial_port()
